@@ -1,0 +1,221 @@
+// Prisma Schema for NotebookListAI
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  PRO
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+  INCOMPLETE
+}
+
+enum PlanType {
+  FREE
+  PRO
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String?
+  name          String?
+  image         String?
+  role          UserRole  @default(USER)
+  emailVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  // Relations
+  subscriptions Subscription[]
+  notes         Note[]
+  folders       NotebookFolder[]
+  aiUsage       AIUsage[]
+  payments      PaymentHistory[]
+  adminLogs     AdminLog[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Subscription {
+  id                String             @id @default(uuid())
+  userId            String
+  stripeCustomerId  String?            @unique
+  stripeSubscriptionId String?          @unique
+  planType          PlanType           @default(FREE)
+  status            SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean           @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripeCustomerId])
+  @@map("subscriptions")
+}
+
+model Note {
+  id          String   @id @default(uuid())
+  userId      String
+  folderId    String?
+  title       String
+  content     String   @db.Text
+  imageUrl    String?
+  originalText String? @db.Text
+  cleanedText String? @db.Text
+  summary     String? @db.Text
+  language    String?  @default("en")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder      NotebookFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  tags        NoteTag[]
+  aiUsage     AIUsage[]
+
+  @@index([userId])
+  @@index([folderId])
+  @@index([createdAt])
+  @@map("notes")
+}
+
+model NotebookFolder {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  color       String?  @default("#3b82f6")
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes Note[]
+
+  @@index([userId])
+  @@map("notebook_folders")
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  notes NoteTag[]
+
+  @@map("tags")
+}
+
+model NoteTag {
+  id        String   @id @default(uuid())
+  noteId    String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  // Relations
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, tagId])
+  @@index([noteId])
+  @@index([tagId])
+  @@map("note_tags")
+}
+
+model AIUsage {
+  id          String   @id @default(uuid())
+  userId      String
+  noteId      String?
+  operation   String   // "ocr", "clean", "summarize", "rewrite", "title", "tags"
+  tokensUsed  Int      @default(0)
+  cost        Float    @default(0)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note Note? @relation(fields: [noteId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([noteId])
+  @@index([createdAt])
+  @@map("ai_usage")
+}
+
+model PaymentHistory {
+  id                String   @id @default(uuid())
+  userId            String
+  stripePaymentId   String   @unique
+  amount            Float
+  currency          String   @default("usd")
+  planType          PlanType
+  status            String
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripePaymentId])
+  @@index([createdAt])
+  @@map("payment_history")
+}
+
+model AdminLog {
+  id          String   @id @default(uuid())
+  adminId     String
+  action      String
+  targetType  String?  // "user", "subscription", "note", etc.
+  targetId    String?
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@map("admin_logs")
+}
+
+model ContactRequest {
+  id            String   @id @default(uuid())
+  name          String
+  email         String
+  subject       String?
+  message       String   @db.Text
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("contact_requests")
+}
+
+
